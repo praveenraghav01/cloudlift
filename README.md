@@ -5,16 +5,9 @@ services in AWS ECS.
 
 Cloudlift is a command-line tool for dockerized services to be deployed in AWS
 ECS. It's very simple to use. That's possible because this is heavily
-opinionated. Under the hood, it is a wrapper to AWS cloudformation templates. On
-creating/updating a service or a cluster this creates/updates a cloudformation
+opinionated. Under the hood, it is a wrapper to AWS CloudFormation templates. On
+creating/updating a service or a cluster this creates/updates a CloudFormation
 in AWS.
-
-## Demo videos
-
-- [Create Environment](https://asciinema.org/a/evsaZvW86qff0InxNlzLPMtb6)
-- [Create Service](https://asciinema.org/a/RaZb81VDmrnWg8qckWKAm98Bn)
-- [Deploy Service with image build](https://asciinema.org/a/j4A2DBjLPadbwJPvwiT6W1c2N)
-- [Deploy Service](https://asciinema.org/a/FUUJ3U2gm7U1yCcTCGjTiGBbp)
 
 ## Installing cloudlift
 
@@ -28,7 +21,9 @@ curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py | python get-pip.py
 ### 2. Install cloudlift
 
 ```sh
-pip install cloudlift
+git clone git@github.com:weaspire/ECSdeployer.git
+cd cloudlift
+./install-cloudlift.sh
 ```
 
 
@@ -112,6 +107,9 @@ The configuration object is structured as follows:
                 "metrics_path": "string"
             },
             "http_interface": {
+                "alb": {
+                    "create_new": true
+                },
                 "container_port": "number",
                 "internal": "boolean",
                 "restrict_access_to": ["string", "string"]
@@ -174,6 +172,104 @@ In addition, a service object may contain any of the following optional fields:
   - `container_path`: A string representing the mount path inside the container.
 
 - `logging`: A string or null value representing the log driver to be used. Valid options are "fluentd", "awslogs", or null. If this field is null, the default log driver (CloudWatch Logs) will be used.
+
+**ALB**
+
+`alb` allows us to configure how traffic can be routed to service
+
+- To create a new ALB for the cloudlift service
+
+```json5
+{
+  "alb": {
+    // This creates a new ALB and attaches the target group to it.
+    "create_new": true
+  }
+}
+```
+
+- To reuse an ALB
+
+```json5
+{
+  "alb": {
+    // Setting this to false means, the ALB is managed outside of this service definition.
+    // We can use this mode to attach the target group to one of the listeners of an existing ALB
+    "create_new": false,
+
+    // Use listener_arn to attach the TargetGroup to an existing ALB's listener ARN.
+    // The target group will be added using ListenerRule. Optional.
+    // Default: If this is not specified, the environment level loadbalancer_listener_arn will
+    // be picked up.
+    "listener_arn": "<listener-arn>",
+
+    // Use this to specify the priority of the listener rule. Optional.
+    // Default: If this is not specified, a random available priority is used.
+    "priority": 2,
+
+    // Use this to specify host based routing. Optional.
+    "host": "abc.xyz",
+
+    // Use this to specify path based routing. Optional.
+    "path": "/api/*",
+  }
+}
+```
+
+- When reusing ALB, you can configure the following alerts
+
+```json5
+{
+  "alb": {
+    // Setting this to false means, the ALB is managed outside of this service definition.
+    // We can use this mode to attach the target group to one of the listeners of an existing ALB
+    "create_new": false,
+
+    // Fires when target 5xx is greater than threshold
+    // default is 10
+    "target_5xx_error_threshold": 10,
+
+    // Fires when TargetResponseTime.p95 is greater than threshold seconds. (default: 15)
+    "target_p95_latency_threshold_seconds": 15,
+    // number of datapoints to evaluate
+    "target_p95_latency_evaluation_periods": 5,
+    // number of seconds to evaluate
+    "target_p95_latency_period_seconds": 5,
+
+    // Fires when TargetResponseTime.p99 is greater than threshold seconds. (default: 25)
+    "target_p99_latency_threshold_seconds": 25,
+    // number of datapoints to evaluate
+    "target_p99_latency_evaluation_periods": 5,
+    // number of seconds to evaluate
+    "target_p99_latency_period_seconds": 5
+  }
+}
+```
+
+`autoscaling` allows to configure ScalingPolicy for ECS Service.
+
+Supported autoscaling policies `request_count_per_target`. It works only if there is a `http_interface`
+
+```json
+{
+  "services": {
+    "Test123": {
+      "command": null,
+      "memory_reservation": 100,
+      "http_interface": {},
+      "autoscaling": {
+        "max_capacity": 10,
+        "min_capacity": 5,
+        "request_count_per_target": {
+          "target_value": 10,
+          "scale_in_cool_down_seconds": 120,
+          "scale_out_cool_down_seconds": 60
+        }
+      }
+    }
+  }
+}
+```
 
 
 ### 1. Upload configuration to Parameter Store
@@ -383,18 +479,9 @@ In this example, we are configuring a service named Test123. The service has the
 
 ### Setup
 
-#### Use the latest git master 
-
-```sh
-git clone git@github.com:GetSimpl/cloudlift.git
-cd cloudlift
-./install-cloudlift.sh
-```
-
-
 To ensure the tests use the development version and not the installed version run (refer [here](https://stackoverflow.com/a/20972950/227705))
 
-```
+```sh
 pip install -e .
 ```
 
@@ -411,6 +498,13 @@ To run high level integration tests
 
 ```sh
 pytest -s test/test_cloudlift.py
+```
+
+To run tests inside docker container
+
+```sh
+docker build -t cloudlift .
+docker run -it cloudlift
 ```
 
 This tests expects to have an access to AWS console.
