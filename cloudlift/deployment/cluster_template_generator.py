@@ -46,18 +46,23 @@ class ClusterTemplateGenerator(TemplateGenerator):
             self.configuration['cluster']['allocation_strategy'] = 'capacity-optimized'
         self.private_subnets = []
         self.public_subnets = []
+        self.vpc = None
         self._get_availability_zones()
         self.team_name = (self.notifications_arn.split(':')[-1])
 
     def generate_cluster(self):
         self.__validate_parameters()
-        self._setup_network(
-            self.configuration['vpc']['cidr'],
-            self.configuration['vpc']['subnets'],
-            self.configuration['vpc']['nat-gateway']['elastic-ip-allocation-id'],
-        )
+        if 'cidr' in self.configuration['vpc']:
+            self._setup_network(
+                self.configuration['vpc']['cidr'],
+                self.configuration['vpc']['subnets'],
+                self.configuration['vpc']['nat-gateway']['elastic-ip-allocation-id'],
+            )
+        elif 'id' in self.configuration['vpc']:
+            self._use_existing_network()
+
         self._create_log_group()
-        self._setup_cloudmap()
+        # self._setup_cloudmap()
         self._add_cluster_outputs()
         self._add_cluster_parameters()
         self._add_mappings()
@@ -91,6 +96,11 @@ class ClusterTemplateGenerator(TemplateGenerator):
         # TODO validate CIDR
         # TODO
         return False
+    
+    def _use_existing_network(self):
+        self.vpc = self.configuration['vpc']['id']
+        self.public_subnets = [str(self.configuration['vpc']['subnets']['public']['subnet-1']['id']), str(self.configuration['vpc']['subnets']['public']['subnet-2']['id'])]
+        self.private_subnets = [str(self.configuration['vpc']['subnets']['private']['subnet-1']['id']), str(self.configuration['vpc']['subnets']['private']['subnet-2']['id'])]
 
     # TODO: clean up
     def _setup_network(self, cidr_block, subnet_configs, eip_allocation_id):
@@ -406,7 +416,7 @@ class ClusterTemplateGenerator(TemplateGenerator):
         instance_profile = self._add_instance_profile()
         self.sg_alb = SecurityGroup(
             "SecurityGroupAlb",
-            VpcId=Ref(self.vpc),
+            VpcId=Ref(self.vpc)  if 'cidr' in self.configuration['vpc'] else self.vpc,
             GroupDescription=Sub("${AWS::StackName}-alb")
         )
         self.template.add_resource(self.sg_alb)
@@ -418,7 +428,7 @@ class ClusterTemplateGenerator(TemplateGenerator):
                     'IpProtocol': -1
                 }
             ],
-            VpcId=Ref(self.vpc),
+            VpcId=Ref(self.vpc) if 'cidr' in self.configuration['vpc'] else self.vpc,
             GroupDescription=Sub("${AWS::StackName}-hosts")
         )
         self.template.add_resource(self.sg_hosts)
@@ -441,7 +451,7 @@ class ClusterTemplateGenerator(TemplateGenerator):
                     'IpProtocol': -1
                 }
             ],
-            VpcId=Ref(self.vpc),
+            VpcId=Ref(self.vpc) if 'cidr' in self.configuration['vpc'] else self.vpc,
             GroupDescription=Sub("${AWS::StackName}-databases")
         )
         self.template.add_resource(database_security_group)
@@ -530,30 +540,6 @@ class ClusterTemplateGenerator(TemplateGenerator):
                                 lc_metadata_override,
                                 ]).strip()
                             )
-                        },
-                        '02_set_nameserver': {
-                            'command': "INTERFACE=$(curl --silent http://169.254.169.254/latest/meta-data/network/interfaces/macs/ | head -n1); IS_IT_CLASSIC=$(curl --write-out %{http_code} --silent --output /dev/null http://169.254.169.254/latest/meta-data/network/interfaces/macs/${INTERFACE}/vpc-id); if [[ $IS_IT_CLASSIC == '404' ]]; then bash -c \"echo 'supersede domain-name-servers 127.0.0.1, 172.16.0.23;' >> /etc/dhcp/dhclient.conf && echo 'nameserver 172.16.0.23' > /etc/resolv.dnsmasq\"; else  bash -c \"echo 'supersede domain-name-servers 127.0.0.1, 169.254.169.253;' >> /etc/dhcp/dhclient.conf && echo 'nameserver 169.254.169.253' > /etc/resolv.dnsmasq\"; fi"
-                        },
-                        '03_install_dnsmasq_package': {
-                            'command': 'yum install -y dnsmasq bind-utils'
-                        },
-                        '04_create_group': {
-                            'command': 'groupadd -r dnsmasq'
-                        },
-                        '05_create_user': {
-                            'command': 'useradd -r -g dnsmasq dnsmasq'
-                        },
-                        '06_add_locahost_nameserver': {
-                            'command': "sed -i '/search ap-south-1.compute.internal/a nameserver 127.0.0.1' /etc/resolv.conf"
-                        },
-                        '07_enable_dnsmasq_service': {
-                            'command': 'pidof systemd && systemctl restart dnsmasq.service || service dnsmasq restart'
-                        },
-                        '08_start_dnsmasq_service': {
-                            'command': 'pidof systemd && systemctl enable  dnsmasq.service || chkconfig dnsmasq on'
-                        },
-                        '09_configure_dhclient': {
-                            'command': 'bash -c "dhclient"'
                         }
             })})
             launch_template_data = LaunchTemplateData(
@@ -577,7 +563,7 @@ class ClusterTemplateGenerator(TemplateGenerator):
             launch_template = LaunchTemplate(
                 "LaunchTemplate"+deployment_type,
                 LaunchTemplateData=launch_template_data,
-                LaunchTemplateName=self.env + "-LaunchTemplate"+deployment_type,
+                LaunchTemplateName= "cluster-" + self.env if deployment_type == 'OnDemand' else "cluster-" + self.env + "-"+deployment_type,
                 Metadata=lc_metadata
             )
             
@@ -599,6 +585,7 @@ class ClusterTemplateGenerator(TemplateGenerator):
                 }
             self.auto_scaling_group = AutoScalingGroup(
                 "AutoScalingGroup"+deployment_type,
+                AutoScalingGroupName= "cluster-" + self.env if deployment_type == 'OnDemand' else "cluster-" + self.env + "-" + deployment_type,
                 UpdatePolicy=up,
                 DesiredCapacity=str(self.desired_instances if (self.desired_instances is not None) and self.desired_instances >= 1 else self.configuration['cluster']['min_instances'] if deployment_type == 'OnDemand' else self.configuration['cluster']['spot_min_instances']),
                 Tags=[
@@ -617,7 +604,7 @@ class ClusterTemplateGenerator(TemplateGenerator):
                 ],
                 MinSize=Ref('OnDemandMinSize') if deployment_type == 'OnDemand' else Ref('SpotMinSize'),
                 MaxSize=Ref('OnDemandMaxSize') if deployment_type == 'OnDemand' else Ref('SpotMaxSize'),
-                VPCZoneIdentifier=[Ref(subnets.pop()), Ref(subnets.pop())],
+                VPCZoneIdentifier=[Ref(subnets.pop()), Ref(subnets.pop())] if 'cidr' in self.configuration['vpc'] else [subnets.pop(), subnets.pop()],
                 NotificationConfigurations=[
                     NotificationConfigurations(
                         NotificationTypes=[
@@ -654,6 +641,7 @@ class ClusterTemplateGenerator(TemplateGenerator):
             )
             ec2_hosts_high_cpu_alarm = Alarm(
                 'Ec2HostsHighCPUAlarm'+deployment_type,
+                AlarmName="cluster-" + self.env + "-Ec2HostsHighCPUAlarm" if deployment_type == 'OnDemand' else "cluster-" + self.env + "-" + deployment_type + "-Ec2HostsHighCPUAlarm",
                 EvaluationPeriods=1,
                 Dimensions=[
                     MetricDimension(Name='AutoScalingGroupName',
@@ -671,6 +659,7 @@ class ClusterTemplateGenerator(TemplateGenerator):
             )
             self.cluster_high_memory_reservation_autoscale_alarm = Alarm(
                 'ClusterHighMemoryReservationAlarm'+deployment_type,
+                AlarmName="cluster-" + self.env + "-HighMemoryReservationAlarm" if deployment_type == 'OnDemand' else "cluster-" + self.env + "-" + deployment_type + "-HighMemoryReservationAlarm",
                 EvaluationPeriods=1,
                 Dimensions=[
                     MetricDimension(Name='ClusterName',
@@ -756,29 +745,29 @@ class ClusterTemplateGenerator(TemplateGenerator):
         self.template.add_output(Output(
             "VPC",
             Description="VPC in which environment is setup",
-            Value=Ref(self.vpc))
+            Value=Ref(self.vpc) if 'cidr' in self.configuration['vpc'] else self.vpc)
         )
         private_subnets = list(self.private_subnets)
         self.template.add_output(Output(
             "PrivateSubnet1",
             Description="ID of the 1st subnet",
-            Value=Ref(private_subnets.pop()))
+            Value=Ref(private_subnets.pop()) if 'cidr' in self.configuration['vpc'] else private_subnets.pop())
         )
         self.template.add_output(Output(
             "PrivateSubnet2",
             Description="ID of the 2nd subnet",
-            Value=Ref(private_subnets.pop()))
+            Value=Ref(private_subnets.pop()) if 'cidr' in self.configuration['vpc'] else private_subnets.pop()) 
         )
         public_subnets = list(self.public_subnets)
         self.template.add_output(Output(
             "PublicSubnet1",
             Description="ID of the 1st subnet",
-            Value=Ref(public_subnets.pop()))
+            Value=Ref(public_subnets.pop()) if 'cidr' in self.configuration['vpc'] else public_subnets.pop())
         )
         self.template.add_output(Output(
             "PublicSubnet2",
             Description="ID of the 2nd subnet",
-            Value=Ref(public_subnets.pop()))
+            Value=Ref(public_subnets.pop()) if 'cidr' in self.configuration['vpc'] else public_subnets.pop())
         )
         if self.configuration['cluster']['spot_min_instances'] > 0:
             self.template.add_output(Output(
@@ -827,12 +816,12 @@ class ClusterTemplateGenerator(TemplateGenerator):
             Description="Key Pair name for accessing the instances",
             Value=str(self.configuration['cluster']['key_name']))
         )
-        self.template.add_output(Output(
-            "CloudmapId",
-            Description="CloudMap Namespace ID for service discovery",
-            Export=Export("{self.env}Cloudmap".format(**locals())),
-            Value=GetAtt(self.cloudmap, 'Id'))
-        )
+        # self.template.add_output(Output(
+        #     "CloudmapId",
+        #     Description="CloudMap Namespace ID for service discovery",
+        #     Export=Export("{self.env}Cloudmap".format(**locals())),
+        #     Value=GetAtt(self.cloudmap, 'Id'))
+        # )
         self.template.add_output(Output(
             "SecurityGroupEC2Host",
             Export=Export("{self.env}Ec2Host".format(**locals())),

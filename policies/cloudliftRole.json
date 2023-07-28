@@ -1,0 +1,266 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "dynamodbrw",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:CreateTable",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:GetRecords"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:ap-south-1:*:table/service_configurations",
+        "arn:aws:dynamodb:ap-south-1:*:table/environment_configurations"
+      ]
+    },
+    {
+      "Sid": "iamro",
+      "Effect": "Allow",
+      "Action": ["iam:ListAccountAliases"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ecsrw",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:StartTask",
+        "ecs:DeleteService",
+        "ecs:UpdateService",
+        "ecs:CreateService",
+        "ecs:RunTask",
+        "ecs:StopTask",
+        "ecs:DescribeServices",
+        "ecs:DeregisterContainerInstance",
+        "ecs:TagResource",
+        "ecs:DescribeTasks",
+        "ecs:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:ecs:ap-south-1:*:task-definition/*:*",
+        "arn:aws:ecs:ap-south-1:*:cluster/cluster-*",
+        "arn:aws:ecs:ap-south-1:*:task/*/*",
+        "arn:aws:ecs:ap-south-1:*:service/*/*",
+        "arn:aws:ecs:ap-south-1:*:container-instance/*/*"
+      ]
+    },
+    {
+      "Sid": "iampassrw",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": [
+            "ecs-tasks.amazonaws.com",
+            "ecs.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "dynamodbr",
+      "Effect": "Allow",
+      "Action": ["dynamodb:ListTables"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ec2rw",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:DescribeKeyPairs",
+        "ec2:DescribeRegions",
+        "ec2:DescribeAccountAttributes",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:CreateSecurityGroup",
+        "ec2:DescribeTags",
+        "ec2:DeleteTags",
+        "ec2:DescribeSubnets",
+        "ec2:CreateTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "cloudwatchrw",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:GetMetricData",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:PutMetricAlarm"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "iamrw",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PutRolePolicy",
+        "iam:GetRole",
+        "iam:GetPolicy",
+        "iam:CreateRole",
+        "iam:AttachRolePolicy",
+        "iam:DeleteRole",
+        "iam:CreateServiceLinkedRole"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "cloudformationrw",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:UpdateStack",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ListStackResources",
+        "cloudformation:RollbackStack",
+        "cloudformation:DeleteStack",
+        "cloudformation:ValidateTemplate",
+        "cloudformation:TagResource",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeStack*",
+        "cloudformation:ListStacks",
+        "cloudformation:SignalResource",
+        "cloudformation:UntagResource",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:ContinueUpdateRollback",
+        "cloudformation:UpdateStackSet",
+        "cloudformation:ListStackSets",
+        "cloudformation:CreateStack"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "servicediscoveryrw",
+      "Effect": "Allow",
+      "Action": [
+        "servicediscovery:CreateService",
+        "servicediscovery:GetNamespace",
+        "servicediscovery:UntagResource",
+        "servicediscovery:GetOperation",
+        "servicediscovery:TagResource",
+        "servicediscovery:CreatePrivateDnsNamespace",
+        "servicediscovery:UpdateService",
+        "servicediscovery:ListNamespaces",
+        "servicediscovery:GetService",
+        "servicediscovery:DeleteService",
+        "servicediscovery:ListServices"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "elasticloadbalancingrw",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:CreateTargetGroup",
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:ModifyLoadBalancerAttributes",
+        "elasticloadbalancing:RemoveListenerCertificates",
+        "elasticloadbalancing:AddListenerCertificates",
+        "elasticloadbalancing:CreateLoadBalancer",
+        "elasticloadbalancing:SetSubnets",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:RegisterTargets",
+        "elasticloadbalancing:DeleteLoadBalancer",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:ModifyTargetGroupAttributes",
+        "elasticloadbalancing:ModifyListener",
+        "elasticloadbalancing:DeregisterTargets",
+        "elasticloadbalancing:DescribeLoadBalancerAttributes",
+        "elasticloadbalancing:DescribeTargetGroupAttributes",
+        "elasticloadbalancing:DeleteTargetGroup",
+        "elasticloadbalancing:RemoveTags",
+        "elasticloadbalancing:CreateListener",
+        "elasticloadbalancing:DescribeTags",
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeTargetHealth",
+        "elasticloadbalancing:SetSecurityGroups",
+        "elasticloadbalancing:ModifyTargetGroup"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ecsr",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:ListTaskDefinitionFamilies",
+        "ecs:ListTaskDefinitions",
+        "ecs:DescribeTaskDefinition",
+        "ecs:ListTasks",
+        "ecs:DescribeTasks",
+        "ecs:DescribeContainerInstances",
+        "ecs:DeregisterTaskDefinition",
+        "ecs:ListServices",
+        "ecs:RegisterTaskDefinition",
+        "ecs:CreateTaskSet",
+        "ecs:ListClusters"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "snsro",
+      "Effect": "Allow",
+      "Action": ["SNS:GetTopicAttributes"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ecrrw",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:InitiateLayerUpload",
+        "ecr:CreatePullThroughCacheRule",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetAuthorizationToken",
+        "ecr:CreateRepository",
+        "ecr:PutImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ssmparameterrw",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:DeleteParameter",
+        "ssm:GetParametersByPath",
+        "ssm:GetParameters",
+        "ssm:PutParameter",
+        "ssm:DeleteParameters"
+      ],
+      "Resource": [
+        "arn:aws:ssm:ap-south-1:*:parameter/staging/*",
+        "arn:aws:ssm:ap-south-1:*:parameter/unicorn/*",
+        "arn:aws:ssm:ap-south-1:*:parameter/sandbox/*",
+        "arn:aws:ssm:ap-south-1:*:parameter/production/*",
+      ]
+    },
+    {
+      "Sid": "ssmsession",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "ssm:resourceTag/environment": [
+            "staging",
+            "unicorn",
+            "sandbox",
+            "production"
+          ]
+        }
+      }
+    }
+  ]
+}

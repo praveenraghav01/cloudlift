@@ -7,7 +7,7 @@ import click
 from cloudlift.config.logging import log, log_bold, log_err
 
 def create_change_set(client, service_template_body, template_source, stack_name,
-                      key_name, environment):
+                      key_name, environment, no_confirm=False):
     change_set_parameters = [
         {'ParameterKey': 'Environment', 'ParameterValue': environment}
     ]
@@ -60,13 +60,16 @@ def create_change_set(client, service_template_body, template_source, stack_name
     else:
         log_bold("Changeset created.. Following are the changes")
         _print_changes(change_set)
-        if click.confirm('Do you want to execute the changeset?'):
+        if no_confirm:
             return change_set
-        log_bold("Deleting changeset...")
-        client.delete_change_set(
-            ChangeSetName=create_change_set_res['Id']
-        )
-        log_bold("Done. Bye!")
+        else:
+            if click.confirm('Do you want to execute the changeset?'):
+                return change_set
+            log_bold("Deleting changeset...")
+            client.delete_change_set(
+                ChangeSetName=create_change_set_res['Id']
+            )
+            log_bold("Done. Bye!")
 
 
 def _print_changes(change_set):

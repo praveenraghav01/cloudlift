@@ -55,7 +55,7 @@ class CommandWrapper(click.Group):
 @click.version_option(version=VERSION, prog_name="cloudlift")
 def cli():
     """
-        Cloudlift is built by Simpl developers to make it easier to launch \
+        Cloudlift is built for developers to make it easier to launch \
         dockerized services in AWS ECS.
     """
     try:
@@ -63,7 +63,7 @@ def cli():
     except ClientError:
         log_err("Could not connect to AWS!")
         log_err("Ensure AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY & \
-AWS_DEFAULT_REGION env vars are set OR run 'aws configure'")
+                AWS_DEFAULT_REGION env vars are set OR run 'aws configure'")
         exit(1)
 
 
@@ -71,17 +71,23 @@ AWS_DEFAULT_REGION env vars are set OR run 'aws configure'")
 ECS services")
 @_require_environment
 @_require_name
-def create_service(name, environment):
+@click.option('--bucket', default=None, help='S3 bucket name for storing CloudFormation templates')
+@click.option('--env_sample_file_path', default=None, help='env sample file path')
+def create_service(name, environment, bucket, env_sample_file_path):
     check_stack_exists(name, environment, "create")
-    ServiceCreator(name, environment).create()
+    ServiceCreator(name, environment, bucket, env_sample_file_path).create()
 
 
 @cli.command(help="Update existing service.")
 @_require_environment
 @_require_name
-def update_service(name, environment):
+@click.option('--bucket', default=None, help='S3 bucket name for storing CloudFormation templates')
+@click.option('--env_sample_file_path', default=None, help='env sample file path')
+@click.option('--cli', 'no_editor', is_flag=True, help='Update config without opening an editor.')
+@click.option('--no-confirm', 'no_confirm', is_flag=True, help='Apply changes without asking for confirmation.')
+def update_service(name, environment, bucket, env_sample_file_path, no_editor, no_confirm):
     check_stack_exists(name, environment, "update")
-    ServiceCreator(name, environment).update()
+    ServiceCreator(name, environment, bucket, env_sample_file_path).update(no_editor, no_confirm)
 
 
 @cli.command(help="Create a new environment")
@@ -96,8 +102,11 @@ def create_environment(environment):
 @click.option('--update_ecs_agents',
               is_flag=True,
               help='Update ECS container agents')
-def update_environment(environment, update_ecs_agents):
-    EnvironmentCreator(environment).run_update(update_ecs_agents)
+
+@click.option('--cli', 'no_editor', is_flag=True, help='Update config without opening an editor.')
+@click.option('--no-confirm', 'no_confirm', is_flag=True, help='Apply changes without asking for confirmation.')
+def update_environment(environment, update_ecs_agents, no_editor, no_confirm):
+    EnvironmentCreator(environment, no_editor).run_update(update_ecs_agents, no_confirm)
 
 
 @cli.command(help="Command used to create or update the configuration \

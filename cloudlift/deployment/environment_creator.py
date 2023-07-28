@@ -15,12 +15,12 @@ from cloudlift.deployment.progress import get_stack_events, print_new_events
 
 class EnvironmentCreator(object):
 
-    def __init__(self, environment):
+    def __init__(self, environment, no_editor=False):
         self.environment = environment
         self.environment_configuration = EnvironmentConfiguration(
             self.environment
         )
-        self.environment_configuration.update_config()
+        self.environment_configuration.update_config(no_editor)
         self.configuration = self.environment_configuration.get_config()[self.environment]
         self.cluster_name = get_cluster_name(environment)
         self.client = get_client_for('cloudformation', self.environment)
@@ -70,7 +70,7 @@ class EnvironmentCreator(object):
             log_bold(self.cluster_name+" stack created. ID: " +
                      environment_stack['StackId'])
 
-    def run_update(self, update_ecs_agents):
+    def run_update(self, update_ecs_agents, no_confirm=False):
         if update_ecs_agents:
             self.__run_ecs_container_agent_udpate()
         try:
@@ -89,7 +89,8 @@ class EnvironmentCreator(object):
                 "TemplateBody",
                 self.cluster_name,
                 self.key_name,
-                self.environment
+                self.environment,
+                no_confirm
             )
             self.existing_events = get_stack_events(
                 self.client,

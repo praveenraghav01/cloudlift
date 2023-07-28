@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+
+  ECS integration.
+  - Creates an instance role to be used for the task ExecutionRole.
+
+Resources:
+  ECSTaskExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: "ecsTaskExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: "2008-10-17"
+        Statement:
+          - Sid: ""
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: "sts:AssumeRole"
+      Description: "ECS task execution role"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+Outputs:
+  ExecutionRoleARN:
+    Description: "ECS Execution Role"
+    Value: !Ref ECSTaskExecutionRole

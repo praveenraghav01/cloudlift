@@ -15,7 +15,8 @@ from cloudlift.deployment.changesets import create_change_set
 from cloudlift.config.logging import log, log_bold, log_err
 from cloudlift.deployment.progress import get_stack_events, print_new_events
 from cloudlift.deployment.service_template_generator import ServiceTemplateGenerator
-
+from cloudlift.deployment.service_information_fetcher import ServiceInformationFetcher
+from cloudlift.config.pre_flight import service_update_preflight_checks
 
 class ServiceCreator(object):
     '''
@@ -23,13 +24,15 @@ class ServiceCreator(object):
         CloudFormation template for ECS service and related dependencies
     '''
 
-    def __init__(self, name, environment):
+    def __init__(self, name, environment, bucket_name=None, env_sample_file_path=None):
         self.name = name
         self.environment = environment
         self.stack_name = get_service_stack_name(environment, name)
         self.client = get_client_for('cloudformation', self.environment)
         self.s3client = get_client_for('s3', self.environment)
-        self.bucket_name = 'cloudlift-service-template'
+        self.ecrClient = get_client_for('ecr', self.environment)
+        self.bucket_name = bucket_name
+        self.env_sample_file_path = env_sample_file_path
         self.environment_stack = self._get_environment_stack()
         self.existing_events = get_stack_events(self.client, self.stack_name)
         self.service_configuration = ServiceConfiguration(
@@ -61,7 +64,9 @@ class ServiceCreator(object):
 
         template_generator = ServiceTemplateGenerator(
             self.service_configuration,
-            self.environment_stack
+            self.environment_stack,
+            self.bucket_name,
+            self.env_sample_file_path
         )
         service_template_body, template_source, key = template_generator.generate_service()
 
@@ -99,19 +104,24 @@ class ServiceCreator(object):
             else:
                 raise boto_client_error
 
-    def update(self):
+    def update(self, no_editor=False, no_confirm=False):
         '''
             Create and execute changeset for existing CloudFormation template
             for ECS service and related dependencies
         '''
 
         log_bold("Starting to update service")
-        self.service_configuration.edit_config()
+        current_version = ServiceInformationFetcher(
+            self.name, self.environment).get_current_version(skip_master_reset=True)
+        service_update_preflight_checks(current_version=current_version, service_name=self.name, environment=self.environment, ecr_client=self.ecrClient)
+        self.service_configuration.edit_config(no_editor)
         try:
             template_generator = ServiceTemplateGenerator(
-                self.service_configuration,
-                self.environment_stack
-            )
+            self.service_configuration,
+            self.environment_stack,
+            self.bucket_name,
+            self.env_sample_file_path
+        )
             service_template_body, template_source, key = template_generator.generate_service()
             change_set = create_change_set(
                 self.client,
@@ -119,7 +129,8 @@ class ServiceCreator(object):
                 template_source,
                 self.stack_name,
                 "",
-                self.environment
+                self.environment,
+                no_confirm
             )
             if change_set is None:
                 self.delete_template(key)

@@ -70,11 +70,11 @@ class EnvironmentConfiguration(object):
         except KeyError:
             raise UnrecoverableException("Environment configuration not found. Does this environment exist?")
 
-    def update_config(self):
+    def update_config(self, no_editor=False):
 
         if not self._env_config_exists():
             self._create_config()
-        self._edit_config()
+        self._edit_config(no_editor)
 
     def get_all_environments(self):
         response = self.table.scan(
@@ -105,17 +105,27 @@ class EnvironmentConfiguration(object):
             \ndefault region is the same as previously used. Otherwise, use\
             \nthe same configuration.\n"
         )
-        region = prompt("AWS region for environment", default='ap-south-1')
-        vpc_cidr = ipaddress.IPv4Network(prompt("VPC CIDR, for example 10.10.0.0/16"))
-        nat_eip = prompt("Allocation ID Elastic IP for NAT")
-        public_subnet_1_cidr = prompt(
-            "Public Subnet 1 CIDR", default=list(vpc_cidr.subnets(new_prefix=22))[0])
-        public_subnet_2_cidr = prompt(
-            "Public Subnet 2 CIDR", default=list(vpc_cidr.subnets(new_prefix=22))[1])
-        private_subnet_1_cidr = prompt(
-            "Private Subnet 1 CIDR", default=list(vpc_cidr.subnets(new_prefix=22))[2])
-        private_subnet_2_cidr = prompt(
-            "Private Subnet 2 CIDR", default=list(vpc_cidr.subnets(new_prefix=22))[3])
+        region = prompt("AWS region for environment", default='ap-southeast-1')
+        import_vpc = prompt("Import VPC from another environment [Y/N]", default='N')
+        if import_vpc.lower() == 'y':
+            vpc_id = prompt("VPC ID to import")
+            public_subnet_1_id = prompt("Public Subnet 1 ID")
+            public_subnet_2_id = prompt("Public Subnet 2 ID")
+            private_subnet_1_id = prompt("Private Subnet 1 ID")
+            private_subnet_2_id = prompt("Private Subnet 2 ID")
+        elif import_vpc.lower() == 'n':
+            vpc_cidr = ipaddress.IPv4Network(prompt("VPC CIDR, for example 10.10.0.0/16"))
+            nat_eip = prompt("Allocation ID Elastic IP for NAT")
+            public_subnet_1_cidr = prompt(
+                "Public Subnet 1 CIDR", default=list(vpc_cidr.subnets(new_prefix=22))[0])
+            public_subnet_2_cidr = prompt(
+                "Public Subnet 2 CIDR", default=list(vpc_cidr.subnets(new_prefix=22))[1])
+            private_subnet_1_cidr = prompt(
+                "Private Subnet 1 CIDR", default=list(vpc_cidr.subnets(new_prefix=22))[2])
+            private_subnet_2_cidr = prompt(
+                "Private Subnet 2 CIDR", default=list(vpc_cidr.subnets(new_prefix=22))[3])
+        else:
+            raise UnrecoverableException("Invalid input for importing VPC")
         cluster_types = prompt("Cluster type \n [1] On-Demand \n [2] Spot \n [3] Both \n default ", default=3)
         if cluster_types == 1:
             od_cluster_min_instances = prompt("Min instances in On-Demand cluster", default=1)
@@ -156,26 +166,14 @@ class EnvironmentConfiguration(object):
         environment_configuration = {self.environment: {
             "region": region,
             "vpc": {
-                "cidr": str(vpc_cidr),
-                "nat-gateway": {
-                    "elastic-ip-allocation-id": nat_eip
-                },
                 "subnets": {
                     "public": {
-                        "subnet-1": {
-                            "cidr": str(public_subnet_1_cidr)
-                        },
-                        "subnet-2": {
-                            "cidr": str(public_subnet_2_cidr)
-                        }
+                        "subnet-1": {},
+                        "subnet-2": {}
                     },
                     "private": {
-                        "subnet-1": {
-                            "cidr": str(private_subnet_1_cidr)
-                        },
-                        "subnet-2": {
-                            "cidr": str(private_subnet_2_cidr)
-                        }
+                        "subnet-1": {},
+                        "subnet-2": {}
                     }
                 }
             },
@@ -193,6 +191,20 @@ class EnvironmentConfiguration(object):
                 "ssl_certificate_arn": ssl_certificate_arn
             }
         }, 'cloudlift_version': VERSION}
+        if import_vpc.lower() == 'y':
+            environment_configuration[self.environment]['vpc']['id'] = vpc_id
+            environment_configuration[self.environment]['vpc']['subnets']['public']['subnet-1']['id'] = public_subnet_1_id
+            environment_configuration[self.environment]['vpc']['subnets']['public']['subnet-2']['id'] = public_subnet_2_id
+            environment_configuration[self.environment]['vpc']['subnets']['private']['subnet-1']['id'] = private_subnet_1_id
+            environment_configuration[self.environment]['vpc']['subnets']['private']['subnet-2']['id'] = private_subnet_2_id
+
+        else:
+            environment_configuration[self.environment]['vpc']['nat-gateway']['elastic-ip-allocation-id'] = nat_eip
+            environment_configuration[self.environment]['vpc']['subnets']['public']['subnet-1']['cidr'] = str(public_subnet_1_cidr)
+            environment_configuration[self.environment]['vpc']['subnets']['public']['subnet-2']['cidr'] = str(public_subnet_2_cidr)
+            environment_configuration[self.environment]['vpc']['subnets']['private']['subnet-1']['cidr'] = str(private_subnet_1_cidr)
+            environment_configuration[self.environment]['vpc']['subnets']['private']['subnet-2']['cidr'] = str(private_subnet_2_cidr)
+            environment_configuration[self.environment]['vpc']['cidr'] = str(vpc_cidr)
         if cluster_types != 1:
             environment_configuration[self.environment]['cluster']['spot_allocation_strategy'] = spot_allocation_strategy
             if spot_allocation_strategy == 'lowest-price':
@@ -200,42 +212,46 @@ class EnvironmentConfiguration(object):
         self._set_config(environment_configuration)
         pass
 
-    def _edit_config(self):
+    def _edit_config(self, no_editor=False):
         '''
             Open editor to update configuration
         '''
         try:
             current_configuration = self.get_config()
             previous_cloudlift_version = current_configuration.pop('cloudlift_version', None)
-            updated_configuration = edit(
-                json.dumps(
-                    current_configuration,
-                    indent=4,
-                    sort_keys=True,
-                    cls=DecimalEncoder
-                )
-            )
-
-            if updated_configuration is None:
-                log_warning("No changes made.")
+            if no_editor:
+                self.set_config(current_configuration)
+                log_warning("Using configuration from dynamoDB.")
             else:
-                updated_configuration = json.loads(updated_configuration)
-                differences = list(dictdiffer.diff(
-                    current_configuration,
-                    updated_configuration
-                ))
-                if not differences:
+                updated_configuration = edit(
+                    json.dumps(
+                        current_configuration,
+                        indent=4,
+                        sort_keys=True,
+                        cls=DecimalEncoder
+                    )
+                )
+
+                if updated_configuration is None:
                     log_warning("No changes made.")
-                    updated_configuration['cloudlift_version']=VERSION
-                    self._set_config(updated_configuration)
-                    # self.update_cloudlift_version()
                 else:
-                    print_json_changes(differences)
-                    if confirm('Do you want update the config?'):
+                    updated_configuration = json.loads(updated_configuration)
+                    differences = list(dictdiffer.diff(
+                        current_configuration,
+                        updated_configuration
+                    ))
+                    if not differences:
+                        log_warning("No changes made.")
+                        updated_configuration['cloudlift_version']=VERSION
                         self._set_config(updated_configuration)
                         # self.update_cloudlift_version()
                     else:
-                        log_warning("Changes aborted.")
+                        print_json_changes(differences)
+                        if confirm('Do you want update the config?'):
+                            self._set_config(updated_configuration)
+                            # self.update_cloudlift_version()
+                        else:
+                            log_warning("Changes aborted.")
         except ClientError:
             raise UnrecoverableException("Unable to fetch environment configuration from DynamoDB.")
 
@@ -319,6 +335,9 @@ class EnvironmentConfiguration(object):
                         "vpc": {
                             "type": "object",
                             "properties": {
+                                "id": {
+                                    "type": "string"
+                                },
                                 "cidr": {
                                     "type": "string"
                                 },
@@ -344,22 +363,22 @@ class EnvironmentConfiguration(object):
                                                     "properties": {
                                                         "cidr": {
                                                             "type": "string"
+                                                        },
+                                                        "id": {
+                                                            "type": "string"
                                                         }
                                                     },
-                                                    "required": [
-                                                        "cidr"
-                                                    ]
                                                 },
                                                 "subnet-2": {
                                                     "type": "object",
                                                     "properties": {
                                                         "cidr": {
                                                             "type": "string"
+                                                        },
+                                                        "id": {
+                                                            "type": "string"
                                                         }
                                                     },
-                                                    "required": [
-                                                        "cidr"
-                                                    ]
                                                 }
                                             },
                                             "required": [
@@ -375,22 +394,24 @@ class EnvironmentConfiguration(object):
                                                     "properties": {
                                                         "cidr": {
                                                             "type": "string"
+                                                        },
+                                                        "id": {
+                                                            "type": "string"
                                                         }
+                                                        
                                                     },
-                                                    "required": [
-                                                        "cidr"
-                                                    ]
                                                 },
                                                 "subnet-2": {
                                                     "type": "object",
                                                     "properties": {
                                                         "cidr": {
                                                             "type": "string"
+                                                        },
+                                                        "id": {
+                                                            "type": "string"
                                                         }
+                                                            
                                                     },
-                                                    "required": [
-                                                        "cidr"
-                                                    ]
                                                 }
                                             },
                                             "required": [
@@ -406,8 +427,6 @@ class EnvironmentConfiguration(object):
                                 }
                             },
                             "required": [
-                                "cidr",
-                                "nat-gateway",
                                 "subnets"
                             ]
                         }

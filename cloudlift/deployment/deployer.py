@@ -50,7 +50,10 @@ def deploy_and_wait(deployment, new_task_definition, color):
 
 
 def build_config(env_name, service_name, sample_env_file_path):
-    service_config = read_config(open(sample_env_file_path).read())
+    if sample_env_file_path is None:
+        service_config = {}
+    else:
+        service_config = read_config(open(sample_env_file_path).read())
     try:
         environment_config, environment_configs_path = ParameterStore(
             service_name,
